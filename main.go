@@ -7,7 +7,8 @@ import (
 
 // Global flag to indicate if we're in test mode
 // This is used by both main.go and scheduler.go
-var isTestMode bool
+// IsTestMode indicates whether the application is running in test mode
+var IsTestMode bool
 
 func main() {
 	// Parse command line flags
@@ -16,13 +17,13 @@ func main() {
 	flag.Parse()
 
 	// Set the global test mode flag
-	isTestMode = *testFlag
+	IsTestMode = *testFlag
 
 	// Use the specified port or default to 8080
 	port := *portFlag
 
 	log.Println("Starting Routine Manager application...")
-	if isTestMode {
+	if IsTestMode {
 		log.Println("Running in test mode - UI will be hidden")
 	}
 	log.Printf("Using port: %d", port)
@@ -32,7 +33,7 @@ func main() {
 	scheduler := NewRoutineScheduler[CustomizedConfig, CustomizedOutput](port, routine)
 
 	// Start some test routines if in test mode
-	if isTestMode {
+	if IsTestMode {
 		log.Println("Starting test routines...")
 	}
 

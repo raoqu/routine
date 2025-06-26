@@ -33,28 +33,15 @@ var (
 
 // startRoutine creates and starts a new routine with the given ID using default config
 func (s *RoutineScheduler[TConfig, TOutput]) startRoutine(id string) {
-	// Call startRoutineWithConfig with empty config string to use defaults
-	s.startRoutineWithConfig(id, "")
+	// Create a zero value of TConfig as the default config
+	defaultConfig := *new(TConfig)
+	s.startRoutineWithConfig(id, defaultConfig)
 }
 
 // startRoutineWithConfig creates and starts a new routine with the given ID and config
-func (s *RoutineScheduler[TConfig, TOutput]) startRoutineWithConfig(id string, configStr string) {
+func (s *RoutineScheduler[TConfig, TOutput]) startRoutineWithConfig(id string, config TConfig) {
 	// Use the routine instance from the scheduler
 	routine := s.Routine
-
-	// Initialize config - either from provided string or default
-	var config TConfig
-	if configStr != "" {
-		// Use the routine's deserializer to parse the config string
-		config = routine.DeserializeConfig(configStr)
-		log.Printf("Starting routine %s with custom config: %s", id, configStr)
-	} else {
-		// Use default config from the routine
-		// This assumes there's a way to get a default config for the generic type
-		// We'll need to handle this differently based on the actual implementation
-		config = *new(TConfig) // This creates a zero value of TConfig
-		log.Printf("Starting routine %s with default config", id)
-	}
 
 	// Initialize the control with the config and default output
 	ctrl := NewRoutineControl(config, *new(TOutput)) // Zero value for TOutput

@@ -13,7 +13,25 @@ import (
 // Handler to check if the application is in test mode
 func (s *RoutineScheduler[TConfig, TOutput]) handleTestMode(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]bool{"testMode": isTestMode})
+	json.NewEncoder(w).Encode(map[string]bool{"testMode": IsTestMode})
+}
+
+// Handler to switch test mode on or off
+func (s *RoutineScheduler[TConfig, TOutput]) handleSwitchTestMode(w http.ResponseWriter, r *http.Request) {
+	// Get the desired mode from the query parameter
+	mode := r.URL.Query().Get("mode")
+	
+	if mode == "on" {
+		IsTestMode = true
+		log.Println("Switched to test mode")
+	} else if mode == "off" {
+		IsTestMode = false
+		log.Println("Switched to normal mode")
+	}
+	
+	// Return the current mode
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"testMode": IsTestMode})
 }
 
 // handleHome serves the main HTML page
@@ -37,7 +55,9 @@ func (s *RoutineScheduler[TConfig, TOutput]) handleStart(w http.ResponseWriter, 
 
 		// Start routine with config if provided
 		if configStr != "" {
-			s.startRoutineWithConfig(id, configStr)
+			// Deserialize the config string to a TConfig object
+			config := s.Routine.DeserializeConfig(configStr)
+			s.startRoutineWithConfig(id, config)
 		} else {
 			s.startRoutine(id)
 		}
@@ -157,6 +177,7 @@ func (s *RoutineScheduler[TConfig, TOutput]) Serve() {
 	mux.HandleFunc("/update-config", s.handleUpdateConfig)
 	mux.HandleFunc("/status", s.handleStatus)
 	mux.HandleFunc("/test_mode", s.handleTestMode)
+	mux.HandleFunc("/switch", s.handleSwitchTestMode)
 
 	log.Printf("Routine server starting on port %d...", s.Port)
 	err := http.ListenAndServe(":"+strconv.Itoa(s.Port), mux)

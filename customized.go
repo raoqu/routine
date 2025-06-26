@@ -28,13 +28,13 @@ func NewCustomizedRoutine() *Routine[CustomizedConfig, CustomizedOutput] {
 		Job: func(ctrl *RoutineControl[CustomizedConfig, CustomizedOutput]) CustomizedOutput {
 			config := ctrl.Config.Load().(CustomizedConfig)
 			prevOutput := ctrl.Output.Load().(CustomizedOutput)
-			
+
 			// Create new output with incremented count
 			newOutput := CustomizedOutput{
 				Count:     prevOutput.Count + config.Value,
 				Timestamp: time.Now(),
 			}
-			
+
 			log.Printf("CustomizedRoutine running: count=%d config=%d", newOutput.Count, config.Value)
 			return newOutput
 		},
@@ -56,8 +56,8 @@ func NewCustomizedRoutine() *Routine[CustomizedConfig, CustomizedOutput] {
 			return CustomizedConfig{Value: value}
 		},
 		SerializeOutput: func(output CustomizedOutput) string {
-			return fmt.Sprintf("{\"count\":%d,\"timestamp\":\"%s\"}", 
-				output.Count, 
+			return fmt.Sprintf("{\"count\":%d,\"timestamp\":\"%s\"}",
+				output.Count,
 				output.Timestamp.Format(time.RFC3339))
 		},
 		DeserializeOutput: func(outputStr string) CustomizedOutput {
@@ -69,14 +69,4 @@ func NewCustomizedRoutine() *Routine[CustomizedConfig, CustomizedOutput] {
 			return CustomizedOutput{Count: count, Timestamp: t}
 		},
 	}
-}
-
-// DefaultCustomizedConfig returns a default configuration
-func DefaultCustomizedConfig() CustomizedConfig {
-	return CustomizedConfig{Value: 1}
-}
-
-// DefaultCustomizedOutput returns a default output
-func DefaultCustomizedOutput() CustomizedOutput {
-	return CustomizedOutput{Count: 0, Timestamp: time.Now()}
 }
