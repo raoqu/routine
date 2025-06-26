@@ -86,6 +86,11 @@
         
         <div class="card">
             <h3>Active Routines</h3>
+            <div style="margin-bottom: 10px;">
+                <label>Filter by ID: </label>
+                <input type="text" id="idFilter" placeholder="Enter ID filter..." style="width: 200px;" oninput="applyFilter()">
+                <button onclick="clearFilter()">Clear</button>
+            </div>
             <table id="routinesTable">
                 <thead>
                     <tr>
@@ -177,12 +182,27 @@
         
         // Store selected routine IDs between updates
         let selectedRoutineIds = [];
+        let currentFilter = "";
+        
+        function applyFilter() {
+            currentFilter = document.getElementById('idFilter').value.trim();
+            updateRoutinesList();
+        }
+        
+        function clearFilter() {
+            document.getElementById('idFilter').value = "";
+            currentFilter = "";
+            updateRoutinesList();
+        }
         
         function updateRoutinesList() {
             // Save current selections before updating
             selectedRoutineIds = getSelectedRoutineIds();
             
-            fetch('/status')
+            // Use the filter in the API request
+            const url = currentFilter ? `/status?filter=${encodeURIComponent(currentFilter)}` : '/status';
+            
+            fetch(url)
                 .then(response => response.json())
                 .then(routines => {
                     const routinesList = document.getElementById('routinesList');

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -92,10 +93,19 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 		Type      string `json:"type"`
 	}
 
+	// Get filter parameter from query string
+	filterID := r.URL.Query().Get("filter")
+	
 	var routines []RoutineInfo
 	
 	// Collect status from all routines
 	routineMap.Range(func(key, val any) bool {
+		// Apply ID filter if provided
+		id := key.(string)
+		if filterID != "" && !strings.Contains(strings.ToLower(id), strings.ToLower(filterID)) {
+			return true // Skip this routine if it doesn't match the filter
+		}
+		
 		// Use type switch to handle different routine control types
 		switch ctrl := val.(type) {
 		case interface{ 
@@ -105,7 +115,7 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 		}:
 			// Use the interface methods to get serialized data
 			routines = append(routines, RoutineInfo{
-				ID:        key.(string),
+				ID:        id,
 				OutputStr: ctrl.GetSerializedOutput(),
 				ConfigStr: ctrl.GetSerializedConfig(),
 				Type:      ctrl.GetRoutineType(),
@@ -119,7 +129,7 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 				config := ctrl.Config.Load().(CustomizedConfig)
 				
 				routines = append(routines, RoutineInfo{
-					ID:        key.(string),
+					ID:        id,
 					OutputStr: routine.SerializeOutput(output),
 					ConfigStr: routine.SerializeConfig(config),
 					Type:      "CustomizedRoutine",
