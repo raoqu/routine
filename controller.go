@@ -3,16 +3,28 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 )
 
-// Global scheduler instance to access from handlers
-var scheduler *RoutineScheduler[CustomizedConfig, CustomizedOutput]
+// Handler to check if the application is in test mode
+func (s *RoutineScheduler[TConfig, TOutput]) handleTestMode(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"testMode": isTestMode})
+}
 
-func handleStart(w http.ResponseWriter, r *http.Request) {
+// handleHome serves the main HTML page
+func (s *RoutineScheduler[TConfig, TOutput]) handleHome(w http.ResponseWriter, r *http.Request) {
+	// Always serve the index.html file directly
+	// The JavaScript in the HTML will check for the isTestMode flag
+	http.ServeFile(w, r, "index.html")
+}
+
+// handleStart starts new routines based on request parameters
+func (s *RoutineScheduler[TConfig, TOutput]) handleStart(w http.ResponseWriter, r *http.Request) {
 	// Get count parameter
 	countStr := r.URL.Query().Get("count")
 	count, _ := strconv.Atoi(countStr)
@@ -25,59 +37,55 @@ func handleStart(w http.ResponseWriter, r *http.Request) {
 
 		// Start routine with config if provided
 		if configStr != "" {
-			scheduler.startRoutineWithConfig(id, configStr)
+			s.startRoutineWithConfig(id, configStr)
 		} else {
-			scheduler.startRoutine(id)
+			s.startRoutine(id)
 		}
 	}
 
 	fmt.Fprintf(w, "Started %d routines", count)
 }
 
-func handleHome(w http.ResponseWriter, r *http.Request) {
-	// Always serve the index.html file directly
-	// The JavaScript in the HTML will check for the isTestMode flag
-	http.ServeFile(w, r, "index.html")
-}
-
-func handleStop(w http.ResponseWriter, r *http.Request) {
+// handleStop stops routines based on request body
+func (s *RoutineScheduler[TConfig, TOutput]) handleStop(w http.ResponseWriter, r *http.Request) {
 	var ids []string
 	_ = json.NewDecoder(r.Body).Decode(&ids)
 	for _, id := range ids {
-		scheduler.stopRoutine(id)
+		s.stopRoutine(id)
 	}
 	fmt.Fprintf(w, "Stopped %d routines", len(ids))
 }
 
-func handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
-	var payload struct {
-		IDs   []string `json:"ids"`
-		Value string   `json:"value"`
+// handleUpdateConfig updates routine configs based on request body
+func (s *RoutineScheduler[TConfig, TOutput]) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
+	type UpdateConfigPayload struct {
+		IDs    []string `json:"ids"`
+		Config string   `json:"config"`
 	}
+
+	var payload UpdateConfigPayload
 	_ = json.NewDecoder(r.Body).Decode(&payload)
 
-	// Update routines with the string config value
+	// Use the routine instance from the scheduler
+	routine := s.Routine
+
 	for _, id := range payload.IDs {
 		if val, ok := routineMap.Load(id); ok {
-			// Use type switch to handle different routine control types
-			switch ctrl := val.(type) {
-			case interface {
-				GetRoutine() interface{}
-				UpdateConfig(configStr string)
-				ResetOutput()
-			}:
-				// Use the interface methods to update config and reset output
-				ctrl.UpdateConfig(payload.Value)
-				ctrl.ResetOutput()
+			// Type assertion to get the control object
+			ctrl, ok := val.(*RoutineControl[TConfig, TOutput])
+			if !ok {
+				log.Printf("Error: could not convert routine %s to expected type", id)
+				continue
+			}
 
-			case *RoutineControl[CustomizedConfig, CustomizedOutput]:
-				// Get the routine to access serialization functions
-				routine := scheduler.RoutineCreator()
-				// Deserialize the config string
-				newConfig := routine.DeserializeConfig(payload.Value)
+			// Deserialize the config string to a config object
+			if payload.Config != "" {
+				newConfig := routine.DeserializeConfig(payload.Config)
 				ctrl.Config.Store(newConfig)
-				// Reset output
-				ctrl.Output.Store(DefaultCustomizedOutput())
+			} else {
+				// Use default config if none provided
+				var defaultConfig TConfig
+				ctrl.Config.Store(defaultConfig)
 			}
 		}
 	}
@@ -85,7 +93,8 @@ func handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "Updated config for %d routines", len(payload.IDs))
 }
 
-func handleStatus(w http.ResponseWriter, r *http.Request) {
+// handleStatus returns the status of all routines
+func (s *RoutineScheduler[TConfig, TOutput]) handleStatus(w http.ResponseWriter, r *http.Request) {
 	type RoutineInfo struct {
 		ID        string `json:"id"`
 		OutputStr string `json:"output"`
@@ -119,11 +128,11 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 				ConfigStr: ctrl.GetSerializedConfig(),
 			})
 
-		case *RoutineControl[CustomizedConfig, CustomizedOutput]:
-			// Get the routine to access serialization functions
-			routine := scheduler.RoutineCreator()
-			output := ctrl.Output.Load().(CustomizedOutput)
-			config := ctrl.Config.Load().(CustomizedConfig)
+		case *RoutineControl[TConfig, TOutput]:
+			// Use the routine instance from the scheduler
+			routine := s.Routine
+			output := ctrl.Output.Load().(TOutput)
+			config := ctrl.Config.Load().(TConfig)
 
 			routines = append(routines, RoutineInfo{
 				ID:        id,
@@ -135,4 +144,23 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 	})
 
 	_ = json.NewEncoder(w).Encode(routines)
+}
+
+func (s *RoutineScheduler[TConfig, TOutput]) Serve() {
+	// Create a new ServeMux for this scheduler instance
+	mux := http.NewServeMux()
+
+	// Register handlers for this scheduler instance
+	mux.HandleFunc("/", s.handleHome)
+	mux.HandleFunc("/start", s.handleStart)
+	mux.HandleFunc("/stop", s.handleStop)
+	mux.HandleFunc("/update-config", s.handleUpdateConfig)
+	mux.HandleFunc("/status", s.handleStatus)
+	mux.HandleFunc("/test_mode", s.handleTestMode)
+
+	log.Printf("Routine server starting on port %d...", s.Port)
+	err := http.ListenAndServe(":"+strconv.Itoa(s.Port), mux)
+	if err != nil {
+		log.Fatalf("Server failed to start: %v", err)
+	}
 }
