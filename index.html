@@ -65,7 +65,7 @@
 </head>
 <body>
     <div class="container">
-        <div class="card">
+        <div class="card" id="controlPanelCard">
             <h2>Routine Manager</h2>
             <div class="controls">
                 <div style="margin-bottom: 10px;">
@@ -108,6 +108,25 @@
     </div>
 
     <script>
+        // Check if we're in test mode by calling the test_mode endpoint
+        function checkTestMode() {
+            fetch('/test_mode')
+                .then(response => response.json())
+                .then(data => {
+                    const controlPanel = document.getElementById('controlPanelCard');
+                    if (controlPanel) {
+                        // Show or hide the control panel based on test mode
+                        controlPanel.style.display = data.testMode ? 'block' : 'none';
+                    }
+                })
+                .catch(error => console.error('Error checking test mode:', error));
+        }
+        
+        // Check test mode when the page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            checkTestMode();
+        });
+        
         // Fetch and update the routines list every second
         setInterval(updateRoutinesList, 1000);
         
@@ -208,12 +227,15 @@
                     const routinesList = document.getElementById('routinesList');
                     routinesList.innerHTML = '';
                     
+                    // Sort routines by ID string order
+                    routines.sort((a, b) => a.id.localeCompare(b.id));
+                    
                     routines.forEach(routine => {
                         const row = document.createElement('tr');
                         
                         // Parse the JSON strings for output and config
-                        let outputDisplay = routine.output;
-                        let configDisplay = routine.config;
+                        let outputDisplay = routine.OutputStr || routine.output;
+                        let configDisplay = routine.ConfigStr || routine.config;
                         
                         try {
                             // Try to parse and display in a more readable format

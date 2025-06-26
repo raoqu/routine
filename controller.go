@@ -10,19 +10,19 @@ import (
 )
 
 // Global scheduler instance to access from handlers
-var scheduler *RoutineScheduler
+var scheduler *RoutineScheduler[CustomizedConfig, CustomizedOutput]
 
 func handleStart(w http.ResponseWriter, r *http.Request) {
 	// Get count parameter
 	countStr := r.URL.Query().Get("count")
 	count, _ := strconv.Atoi(countStr)
-	
+
 	// Get config parameter (optional)
 	configStr := r.URL.Query().Get("config")
-	
+
 	for i := 0; i < count; i++ {
 		id := fmt.Sprintf("worker-%d", time.Now().UnixNano())
-		
+
 		// Start routine with config if provided
 		if configStr != "" {
 			scheduler.startRoutineWithConfig(id, configStr)
@@ -30,11 +30,13 @@ func handleStart(w http.ResponseWriter, r *http.Request) {
 			scheduler.startRoutine(id)
 		}
 	}
-	
+
 	fmt.Fprintf(w, "Started %d routines", count)
 }
 
 func handleHome(w http.ResponseWriter, r *http.Request) {
+	// Always serve the index.html file directly
+	// The JavaScript in the HTML will check for the isTestMode flag
 	http.ServeFile(w, r, "index.html")
 }
 
@@ -50,38 +52,36 @@ func handleStop(w http.ResponseWriter, r *http.Request) {
 func handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
 		IDs   []string `json:"ids"`
-		Value string  `json:"value"`
+		Value string   `json:"value"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&payload)
-	
+
 	// Update routines with the string config value
 	for _, id := range payload.IDs {
 		if val, ok := routineMap.Load(id); ok {
 			// Use type switch to handle different routine control types
 			switch ctrl := val.(type) {
-			case interface{ 
-				GetRoutine() interface{} 
-				UpdateConfig(configStr string) 
-				ResetOutput() 
+			case interface {
+				GetRoutine() interface{}
+				UpdateConfig(configStr string)
+				ResetOutput()
 			}:
 				// Use the interface methods to update config and reset output
 				ctrl.UpdateConfig(payload.Value)
 				ctrl.ResetOutput()
-				
+
 			case *RoutineControl[CustomizedConfig, CustomizedOutput]:
-				// Get the routine creator to access serialization functions
-				if creator, ok := scheduler.RoutineCreator.(func() *Routine[CustomizedConfig, CustomizedOutput]); ok {
-					routine := creator()
-					// Deserialize the config string
-					newConfig := routine.DeserializeConfig(payload.Value)
-					ctrl.Config.Store(newConfig)
-					// Reset output
-					ctrl.Output.Store(DefaultCustomizedOutput())
-				}
+				// Get the routine to access serialization functions
+				routine := scheduler.RoutineCreator()
+				// Deserialize the config string
+				newConfig := routine.DeserializeConfig(payload.Value)
+				ctrl.Config.Store(newConfig)
+				// Reset output
+				ctrl.Output.Store(DefaultCustomizedOutput())
 			}
 		}
 	}
-	
+
 	fmt.Fprintf(w, "Updated config for %d routines", len(payload.IDs))
 }
 
@@ -90,14 +90,13 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 		ID        string `json:"id"`
 		OutputStr string `json:"output"`
 		ConfigStr string `json:"config"`
-		Type      string `json:"type"`
 	}
 
 	// Get filter parameter from query string
 	filterID := r.URL.Query().Get("filter")
-	
+
 	var routines []RoutineInfo
-	
+
 	// Collect status from all routines
 	routineMap.Range(func(key, val any) bool {
 		// Apply ID filter if provided
@@ -105,36 +104,32 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 		if filterID != "" && !strings.Contains(strings.ToLower(id), strings.ToLower(filterID)) {
 			return true // Skip this routine if it doesn't match the filter
 		}
-		
+
 		// Use type switch to handle different routine control types
 		switch ctrl := val.(type) {
-		case interface{ 
-			GetRoutineType() string 
-			GetSerializedConfig() string 
-			GetSerializedOutput() string 
+		case interface {
+			GetRoutineType() string
+			GetSerializedConfig() string
+			GetSerializedOutput() string
 		}:
 			// Use the interface methods to get serialized data
 			routines = append(routines, RoutineInfo{
 				ID:        id,
 				OutputStr: ctrl.GetSerializedOutput(),
 				ConfigStr: ctrl.GetSerializedConfig(),
-				Type:      ctrl.GetRoutineType(),
 			})
-			
+
 		case *RoutineControl[CustomizedConfig, CustomizedOutput]:
-			// Get the routine creator to access serialization functions
-			if creator, ok := scheduler.RoutineCreator.(func() *Routine[CustomizedConfig, CustomizedOutput]); ok {
-				routine := creator()
-				output := ctrl.Output.Load().(CustomizedOutput)
-				config := ctrl.Config.Load().(CustomizedConfig)
-				
-				routines = append(routines, RoutineInfo{
-					ID:        id,
-					OutputStr: routine.SerializeOutput(output),
-					ConfigStr: routine.SerializeConfig(config),
-					Type:      "CustomizedRoutine",
-				})
-			}
+			// Get the routine to access serialization functions
+			routine := scheduler.RoutineCreator()
+			output := ctrl.Output.Load().(CustomizedOutput)
+			config := ctrl.Config.Load().(CustomizedConfig)
+
+			routines = append(routines, RoutineInfo{
+				ID:        id,
+				OutputStr: routine.SerializeOutput(output),
+				ConfigStr: routine.SerializeConfig(config),
+			})
 		}
 		return true
 	})
