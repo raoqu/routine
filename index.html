@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Routine Manager</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .card {
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        button {
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button.stop {
+            background-color: #f44336;
+        }
+        button.stop:hover {
+            background-color: #d32f2f;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .checkbox-col {
+            width: 40px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h2>Routine Manager</h2>
+            <div class="controls">
+                <input type="number" id="count" value="1" min="1" max="100">
+                <button onclick="startRoutines()">Start Routines</button>
+                <button class="stop" onclick="stopSelectedRoutines()">Stop Selected</button>
+                <input type="number" id="configValue" value="0" min="0">
+                <button onclick="updateConfig()">Update Config</button>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h3>Active Routines</h3>
+            <table id="routinesTable">
+                <thead>
+                    <tr>
+                        <th class="checkbox-col"><input type="checkbox" id="selectAll" onclick="toggleSelectAll()"></th>
+                        <th>ID</th>
+                        <th>Output</th>
+                        <th>Config</th>
+                    </tr>
+                </thead>
+                <tbody id="routinesList">
+                    <!-- Routines will be listed here -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // Fetch and update the routines list every second
+        setInterval(updateRoutinesList, 1000);
+        
+        function startRoutines() {
+            const count = document.getElementById('count').value;
+            fetch(`/start?count=${count}`)
+                .then(response => response.text())
+                .then(data => console.log(data))
+                .catch(error => console.error('Error starting routines:', error));
+        }
+        
+        function stopSelectedRoutines() {
+            const selectedIds = getSelectedRoutineIds();
+            if (selectedIds.length === 0) {
+                alert('No routines selected');
+                return;
+            }
+            
+            fetch('/stop', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(selectedIds)
+            })
+            .then(response => response.text())
+            .then(data => console.log(data))
+            .catch(error => console.error('Error stopping routines:', error));
+        }
+        
+        function updateConfig() {
+            const selectedIds = getSelectedRoutineIds();
+            if (selectedIds.length === 0) {
+                alert('No routines selected');
+                return;
+            }
+            
+            const value = parseInt(document.getElementById('configValue').value);
+            fetch('/update-config', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    ids: selectedIds,
+                    value: value
+                })
+            })
+            .then(response => response.text())
+            .then(data => console.log(data))
+            .catch(error => console.error('Error updating config:', error));
+        }
+        
+        function updateRoutinesList() {
+            fetch('/status')
+                .then(response => response.json())
+                .then(routines => {
+                    const routinesList = document.getElementById('routinesList');
+                    routinesList.innerHTML = '';
+                    
+                    routines.forEach(routine => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td><input type="checkbox" class="routine-checkbox" data-id="${routine.id}"></td>
+                            <td>${routine.id}</td>
+                            <td>${routine.output}</td>
+                            <td>${routine.config}</td>
+                        `;
+                        routinesList.appendChild(row);
+                    });
+                })
+                .catch(error => console.error('Error fetching routines:', error));
+        }
+        
+        function getSelectedRoutineIds() {
+            const checkboxes = document.querySelectorAll('.routine-checkbox:checked');
+            return Array.from(checkboxes).map(checkbox => checkbox.dataset.id);
+        }
+        
+        function toggleSelectAll() {
+            const selectAll = document.getElementById('selectAll');
+            const checkboxes = document.querySelectorAll('.routine-checkbox');
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = selectAll.checked;
+            });
+        }
+    </script>
+</body>
+</html>

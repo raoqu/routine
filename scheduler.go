@@ -28,7 +28,11 @@ func (s *RoutineScheduler) Serve() {
 	http.HandleFunc("/update-config", handleUpdateConfig)
 	http.HandleFunc("/status", handleStatus)
 
-	http.ListenAndServe(":"+strconv.Itoa(s.Port), nil)
+	log.Printf("Server starting on port %d...", s.Port)
+	err := http.ListenAndServe(":"+strconv.Itoa(s.Port), nil)
+	if err != nil {
+		log.Fatalf("Server failed to start: %v", err)
+	}
 }
 
 var (
