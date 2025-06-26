@@ -35,14 +35,25 @@ type RoutineIdentity[TConfig any] func(config TConfig) string
 type RoutineStatus func() string
 type RoutineDefaultOutput[TOutput any] func() TOutput
 
+// Serialization/deserialization function types
+type ConfigSerializer[TConfig any] func(config TConfig) string
+type ConfigDeserializer[TConfig any] func(configStr string) TConfig
+type OutputSerializer[TOutput any] func(output TOutput) string
+type OutputDeserializer[TOutput any] func(outputStr string) TOutput
+
 // Routine is a generic struct that represents a job to be executed.
 // It is parameterized by TConfig, the type of its configuration, and
 // TOutput, the type of its result.
 type Routine[TConfig any, TOutput any] struct {
-	ID          string
-	Job         RoutineJob[TConfig, TOutput]
-	GenIdentity RoutineIdentity[TConfig]
-	GetStatus   RoutineStatus
+	ID                string
+	Job               RoutineJob[TConfig, TOutput]
+	GenIdentity       RoutineIdentity[TConfig]
+	GetStatus         RoutineStatus
+	// Serialization/deserialization functions
+	SerializeConfig   ConfigSerializer[TConfig]
+	DeserializeConfig ConfigDeserializer[TConfig]
+	SerializeOutput   OutputSerializer[TOutput]
+	DeserializeOutput OutputDeserializer[TOutput]
 }
 
 // RoutineCreateFunc is a generic function type for creating routines.

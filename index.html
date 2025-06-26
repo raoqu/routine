@@ -23,7 +23,6 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
         .controls {
-            display: flex;
             gap: 10px;
             margin-bottom: 15px;
         }
@@ -69,11 +68,19 @@
         <div class="card">
             <h2>Routine Manager</h2>
             <div class="controls">
-                <input type="number" id="count" value="1" min="1" max="100">
-                <button onclick="startRoutines()">Start Routines</button>
-                <button class="stop" onclick="stopSelectedRoutines()">Stop Selected</button>
-                <input type="number" id="configValue" value="0" min="0">
-                <button onclick="updateConfig()">Update Config</button>
+                <div style="margin-bottom: 10px;">
+                    <label>Count: </label>
+                    <input type="number" id="count" value="1" min="1" max="100">
+                    <label>Initial Config: </label>
+                    <input type="text" id="initialConfig" value='{"value":1}' style="width: 150px;">
+                    <button onclick="startRoutines()">Start Routines</button>
+                </div>
+                <div>
+                    <button class="stop" onclick="stopSelectedRoutines()">Stop Selected</button><br/>
+                    <label>New Config: </label>
+                    <input type="text" id="configValue" value='{"value":2}' style="width: 150px;">
+                    <button onclick="updateConfig()">Update Config</button>
+                </div>
             </div>
         </div>
         
@@ -101,7 +108,17 @@
         
         function startRoutines() {
             const count = document.getElementById('count').value;
-            fetch(`/start?count=${count}`)
+            const configStr = document.getElementById('initialConfig').value;
+            
+            // Validate JSON format
+            try {
+                JSON.parse(configStr); // Just to validate
+            } catch (e) {
+                alert('Invalid JSON format for config');
+                return;
+            }
+            
+            fetch(`/start?count=${count}&config=${encodeURIComponent(configStr)}`)
                 .then(response => response.text())
                 .then(data => console.log(data))
                 .catch(error => console.error('Error starting routines:', error));
@@ -133,7 +150,16 @@
                 return;
             }
             
-            const value = parseInt(document.getElementById('configValue').value);
+            const configValue = document.getElementById('configValue').value;
+            
+            // Validate JSON format
+            try {
+                JSON.parse(configValue); // Just to validate
+            } catch (e) {
+                alert('Invalid JSON format for config');
+                return;
+            }
+            
             fetch('/update-config', {
                 method: 'POST',
                 headers: {
@@ -141,7 +167,7 @@
                 },
                 body: JSON.stringify({
                     ids: selectedIds,
-                    value: value
+                    value: configValue
                 })
             })
             .then(response => response.text())
@@ -149,7 +175,13 @@
             .catch(error => console.error('Error updating config:', error));
         }
         
+        // Store selected routine IDs between updates
+        let selectedRoutineIds = [];
+        
         function updateRoutinesList() {
+            // Save current selections before updating
+            selectedRoutineIds = getSelectedRoutineIds();
+            
             fetch('/status')
                 .then(response => response.json())
                 .then(routines => {
@@ -158,14 +190,44 @@
                     
                     routines.forEach(routine => {
                         const row = document.createElement('tr');
+                        
+                        // Parse the JSON strings for output and config
+                        let outputDisplay = routine.output;
+                        let configDisplay = routine.config;
+                        
+                        try {
+                            // Try to parse and display in a more readable format
+                            const outputObj = JSON.parse(routine.output);
+                            if (outputObj.count !== undefined) {
+                                outputDisplay = `Count: ${outputObj.count}`;
+                                if (outputObj.timestamp) {
+                                    outputDisplay += `<br>Time: ${new Date(outputObj.timestamp).toLocaleTimeString()}`;
+                                }
+                            }
+                            
+                            const configObj = JSON.parse(routine.config);
+                            if (configObj.value !== undefined) {
+                                configDisplay = `Value: ${configObj.value}`;
+                            }
+                        } catch (e) {
+                            // If parsing fails, use the raw string
+                            console.log('Error parsing JSON:', e);
+                        }
+                        
+                        // Check if this routine was previously selected
+                        const isChecked = selectedRoutineIds.includes(routine.id) ? 'checked' : '';
+                        
                         row.innerHTML = `
-                            <td><input type="checkbox" class="routine-checkbox" data-id="${routine.id}"></td>
+                            <td><input type="checkbox" class="routine-checkbox" data-id="${routine.id}" ${isChecked}></td>
                             <td>${routine.id}</td>
-                            <td>${routine.output}</td>
-                            <td>${routine.config}</td>
+                            <td>${outputDisplay}</td>
+                            <td>${configDisplay}</td>
                         `;
                         routinesList.appendChild(row);
                     });
+                    
+                    // Update the select all checkbox state
+                    updateSelectAllCheckbox();
                 })
                 .catch(error => console.error('Error fetching routines:', error));
         }
@@ -181,6 +243,22 @@
             checkboxes.forEach(checkbox => {
                 checkbox.checked = selectAll.checked;
             });
+        }
+        
+        function updateSelectAllCheckbox() {
+            const selectAll = document.getElementById('selectAll');
+            const checkboxes = document.querySelectorAll('.routine-checkbox');
+            const checkboxArray = Array.from(checkboxes);
+            
+            // If no checkboxes, uncheck the select all
+            if (checkboxArray.length === 0) {
+                selectAll.checked = false;
+                return;
+            }
+            
+            // Check if all checkboxes are checked
+            const allChecked = checkboxArray.every(checkbox => checkbox.checked);
+            selectAll.checked = allChecked;
         }
     </script>
 </body>

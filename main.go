@@ -5,9 +5,9 @@ import (
 )
 
 func main() {
-	// Initialize the scheduler with port 8080
+	// Initialize the scheduler with port 8080 and CustomizedRoutine creator
 	log.Println("Starting Routine Manager application...")
-	scheduler = NewRoutineScheduler(8080)
+	scheduler = NewRoutineScheduler[CustomizedConfig, CustomizedOutput](8080, NewCustomizedRoutine)
 
 	// This should block until the server exits
 	scheduler.Serve()
