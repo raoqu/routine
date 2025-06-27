@@ -26,11 +26,16 @@ func NewCustomizedRoutine() *Routine[*CustomizedConfig, CustomizedOutput] {
 	return &Routine[*CustomizedConfig, CustomizedOutput]{
 		Job: func(ctrl *RoutineControl[*CustomizedConfig, CustomizedOutput]) (CustomizedOutput, error) {
 			config := ctrl.Config.Load().(*CustomizedConfig)
-			prevOutput := ctrl.Output.Load().(CustomizedOutput)
+			
+			// Safely handle the previous output, which might be nil on first run
+			var prevCount int
+			if prevOutput, ok := ctrl.Output.Load().(CustomizedOutput); ok {
+				prevCount = prevOutput.Count
+			}
 
 			// Create new output with incremented count
 			newOutput := CustomizedOutput{
-				Count:     prevOutput.Count + config.Value,
+				Count:     prevCount + config.Value,
 				Timestamp: time.Now(),
 			}
 			time.Sleep(100 * time.Millisecond)

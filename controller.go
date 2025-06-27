@@ -45,78 +45,78 @@ func (s *RoutineScheduler[TConfig, TOutput]) handleHome(w http.ResponseWriter, r
 func (s *RoutineScheduler[TConfig, TOutput]) handleStart(w http.ResponseWriter, r *http.Request) {
 	// Get count parameter
 	countStr := r.URL.Query().Get("count")
+	configStr := r.URL.Query().Get("config")
 	count, _ := strconv.Atoi(countStr)
 
-	// Get config parameter (optional)
-	configStr := r.URL.Query().Get("config")
+	var result *HandleResult = NewHandleResult(count, "Failed to start all requested routines")
 
-	// Track any errors that occur during routine creation
-	var errorMsg string
 	started := 0
-	errorCount := 0
+
+	// If count is 0 or negative, return an error
+	if count <= 0 {
+		result.SetError("Invalid count parameter: must be greater than 0").Response(w)
+		return
+	}
+
+	// If config is required but not provided, return an error
+	if configStr == "" {
+		result.SetError("Config parameter is required but was not provided").Response(w)
+		return
+	}
+
+	// Validate config before starting any routines
+	_, err := s.Routine.DeserializeConfig(configStr)
+	if err != nil {
+		result.SetError(fmt.Sprintf("Invalid config: %v", err)).Response(w)
+		return
+	}
 
 	for i := 0; i < count; i++ {
 		id := fmt.Sprintf("worker-%d", time.Now().UnixNano())
 
-		// Start routine with config if provided
-		if configStr != "" {
-			// Use a function to properly scope the recovery for each iteration
-			func() {
-				defer func() {
-					if r := recover(); r != nil {
-						errorMsg = fmt.Sprintf("Some routines failed to start: %v", r)
-						errorCount++
-					}
-				}()
-
-				// Attempt to deserialize and use the config
-				config, err := s.Routine.DeserializeConfig(configStr)
-				if err != nil {
-					errorMsg = fmt.Sprintf("Some routines failed to start: %v", err)
-					errorCount++
-					return
+		// Use a function to properly scope the recovery for each iteration
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					result.SetError(fmt.Sprintf("Some routines failed to start: %v", r))
 				}
-				s.startRoutineWithConfig(id, config)
-				started++
 			}()
-		}
+
+			// Attempt to deserialize and use the config
+			config, err := s.Routine.DeserializeConfig(configStr)
+			if err != nil {
+				result.SetError(fmt.Sprintf("Failed to deserialize config: %v", err))
+				return
+			}
+			s.startRoutineWithConfig(id, config)
+			started++
+		}()
 	}
 
-	// Prepare JSON response
-	w.Header().Set("Content-Type", "application/json")
-	response := map[string]interface{}{
-		"started": started,
-		"total": count,
-		"success": started == count,
-	}
-
-	// Set appropriate status code and include error message if there are errors
-	if started != count || errorMsg != "" {
-		// Set HTTP status code to 500 for errors
-		w.WriteHeader(http.StatusInternalServerError)
-		
-		if errorMsg != "" {
-			response["error"] = errorMsg
-		} else {
-			response["error"] = "Failed to start all requested routines"
-		}
-	}
-
-	// Send JSON response
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-		return
-	}
+	result.Set(started, count).Response(w)
 }
 
 // handleStop stops routines based on request body
 func (s *RoutineScheduler[TConfig, TOutput]) handleStop(w http.ResponseWriter, r *http.Request) {
 	var ids []string
-	_ = json.NewDecoder(r.Body).Decode(&ids)
-	for _, id := range ids {
-		s.stopRoutine(id)
+	var result *HandleResult = NewHandleResult(len(ids), "Failed to stop all requested routines")
+	if err := json.NewDecoder(r.Body).Decode(&ids); err != nil {
+		result.SetError(fmt.Sprintf("Invalid request format: %v", err)).Response(w)
+		return
 	}
-	fmt.Fprintf(w, "Stopped %d routines", len(ids))
+
+	stopped := 0
+
+	for _, id := range ids {
+		if _, ok := routineMap.Load(id); ok {
+			s.stopRoutine(id)
+			stopped++
+		} else {
+			result.SetError(fmt.Sprintf("Routine %s not found", id)).Response(w)
+		}
+	}
+
+	result.Set(stopped, len(ids)).Response(w)
 }
 
 // handleUpdateConfig updates routine configs based on request body
@@ -127,7 +127,15 @@ func (s *RoutineScheduler[TConfig, TOutput]) handleUpdateConfig(w http.ResponseW
 	}
 
 	var payload UpdateConfigPayload
-	_ = json.NewDecoder(r.Body).Decode(&payload)
+	var result *HandleResult = NewHandleResult(0, "Failed to update all requested routines")
+
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		result.SetError(fmt.Sprintf("Invalid request format: %v", err)).Response(w)
+		return
+	}
+
+	// Track success and errors
+	updated := 0
 
 	// Use the routine instance from the scheduler
 	routine := s.Routine
@@ -138,6 +146,7 @@ func (s *RoutineScheduler[TConfig, TOutput]) handleUpdateConfig(w http.ResponseW
 			ctrl, ok := val.(*RoutineControl[TConfig, TOutput])
 			if !ok {
 				log.Printf("Error: could not convert routine %s to expected type", id)
+				result.SetError(fmt.Sprintf("Could not convert routine %s to expected type", id))
 				continue
 			}
 
@@ -146,18 +155,21 @@ func (s *RoutineScheduler[TConfig, TOutput]) handleUpdateConfig(w http.ResponseW
 				newConfig, err := routine.DeserializeConfig(payload.Config)
 				if err != nil {
 					log.Printf("Error: could not deserialize config for routine %s: %v", id, err)
+					result.SetError(fmt.Sprintf("Could not deserialize config for routine %s: %v", id, err))
 					continue
 				}
 				ctrl.Config.Store(newConfig)
+				updated++
 			} else {
-				// Use default config if none provided
-				var defaultConfig TConfig
-				ctrl.Config.Store(defaultConfig)
+				// No config provided
+				result.SetError("No config provided")
 			}
+		} else {
+			result.SetError(fmt.Sprintf("Routine %s not found", id))
 		}
 	}
 
-	fmt.Fprintf(w, "Updated config for %d routines", len(payload.IDs))
+	result.Set(updated, len(payload.IDs)).Response(w)
 }
 
 // handleStatus returns the status of all routines
@@ -231,4 +243,55 @@ func (s *RoutineScheduler[TConfig, TOutput]) Serve() {
 	if err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}
+}
+
+type HandleResult struct {
+	Success             bool   `json:"success"`
+	Error               string `json:"error"`
+	SuccessCount        int    `json:"success_count"`
+	TotalCount          int    `json:"total_count"`
+	DefaultErrorMessage string `json:"-"`
+}
+
+func NewHandleResult(totalCount int, defaultErrorMessage string) *HandleResult {
+	return &HandleResult{
+		Success:             false,
+		Error:               "",
+		SuccessCount:        0,
+		TotalCount:          totalCount,
+		DefaultErrorMessage: defaultErrorMessage,
+	}
+}
+
+func (result *HandleResult) SetSuccess() *HandleResult {
+	result.Success = true
+	result.Error = ""
+	return result
+}
+
+func (result *HandleResult) SetError(error string) *HandleResult {
+	result.Success = false
+	result.Error = error
+	return result
+}
+
+func (result *HandleResult) Set(successCount, totalCount int) *HandleResult {
+	result.SuccessCount = successCount
+	result.TotalCount = totalCount
+	return result
+}
+
+func (result *HandleResult) Response(w http.ResponseWriter) {
+	result.Success = (result.SuccessCount == result.TotalCount) && (result.Error == "")
+	if (result.SuccessCount != result.TotalCount) && (result.Error != "") {
+		result.Error = result.DefaultErrorMessage
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if result.Success {
+		w.WriteHeader(http.StatusOK)
+	} else {
+		w.WriteHeader(http.StatusBadRequest)
+	}
+	json.NewEncoder(w).Encode(result)
 }
