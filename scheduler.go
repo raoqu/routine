@@ -5,7 +5,6 @@ import (
 	"context"
 	"log"
 	"sync"
-	"time"
 )
 
 // RoutineScheduler manages the creation, execution, and termination of routines
@@ -30,13 +29,6 @@ var (
 	// Use type assertion when retrieving from the map
 	routineMap sync.Map // map[string]interface{}
 )
-
-// startRoutine creates and starts a new routine with the given ID using default config
-func (s *RoutineScheduler[TConfig, TOutput]) startRoutine(id string) {
-	// Create a zero value of TConfig as the default config
-	defaultConfig := *new(TConfig)
-	s.startRoutineWithConfig(id, defaultConfig)
-}
 
 // startRoutineWithConfig creates and starts a new routine with the given ID and config
 func (s *RoutineScheduler[TConfig, TOutput]) startRoutineWithConfig(id string, config TConfig) {
@@ -63,11 +55,13 @@ func (s *RoutineScheduler[TConfig, TOutput]) startRoutineWithConfig(id string, c
 				return
 			default:
 				// Execute the routine job and update the output
-				newOutput := routine.Job(ctrl)
-				ctrl.Output.Store(newOutput)
-
-				// Sleep between iterations
-				time.Sleep(100 * time.Millisecond)
+				newOutput, err := routine.Job(ctrl)
+				if err != nil {
+					log.Printf("job runtime error: %v", err)
+					return
+				} else {
+					ctrl.Output.Store(newOutput)
+				}
 			}
 		}
 	}()

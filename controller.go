@@ -20,7 +20,7 @@ func (s *RoutineScheduler[TConfig, TOutput]) handleTestMode(w http.ResponseWrite
 func (s *RoutineScheduler[TConfig, TOutput]) handleSwitchTestMode(w http.ResponseWriter, r *http.Request) {
 	// Get the desired mode from the query parameter
 	mode := r.URL.Query().Get("mode")
-	
+
 	if mode == "on" {
 		IsTestMode = true
 		log.Println("Switched to test mode")
@@ -28,7 +28,7 @@ func (s *RoutineScheduler[TConfig, TOutput]) handleSwitchTestMode(w http.Respons
 		IsTestMode = false
 		log.Println("Switched to normal mode")
 	}
-	
+
 	// Return the current mode
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]bool{"testMode": IsTestMode})
@@ -50,20 +50,63 @@ func (s *RoutineScheduler[TConfig, TOutput]) handleStart(w http.ResponseWriter, 
 	// Get config parameter (optional)
 	configStr := r.URL.Query().Get("config")
 
+	// Track any errors that occur during routine creation
+	var errorMsg string
+	started := 0
+	errorCount := 0
+
 	for i := 0; i < count; i++ {
 		id := fmt.Sprintf("worker-%d", time.Now().UnixNano())
 
 		// Start routine with config if provided
 		if configStr != "" {
-			// Deserialize the config string to a TConfig object
-			config := s.Routine.DeserializeConfig(configStr)
-			s.startRoutineWithConfig(id, config)
-		} else {
-			s.startRoutine(id)
+			// Use a function to properly scope the recovery for each iteration
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						errorMsg = fmt.Sprintf("Some routines failed to start: %v", r)
+						errorCount++
+					}
+				}()
+
+				// Attempt to deserialize and use the config
+				config, err := s.Routine.DeserializeConfig(configStr)
+				if err != nil {
+					errorMsg = fmt.Sprintf("Some routines failed to start: %v", err)
+					errorCount++
+					return
+				}
+				s.startRoutineWithConfig(id, config)
+				started++
+			}()
 		}
 	}
 
-	fmt.Fprintf(w, "Started %d routines", count)
+	// Prepare JSON response
+	w.Header().Set("Content-Type", "application/json")
+	response := map[string]interface{}{
+		"started": started,
+		"total": count,
+		"success": started == count,
+	}
+
+	// Set appropriate status code and include error message if there are errors
+	if started != count || errorMsg != "" {
+		// Set HTTP status code to 500 for errors
+		w.WriteHeader(http.StatusInternalServerError)
+		
+		if errorMsg != "" {
+			response["error"] = errorMsg
+		} else {
+			response["error"] = "Failed to start all requested routines"
+		}
+	}
+
+	// Send JSON response
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		return
+	}
 }
 
 // handleStop stops routines based on request body
@@ -100,7 +143,11 @@ func (s *RoutineScheduler[TConfig, TOutput]) handleUpdateConfig(w http.ResponseW
 
 			// Deserialize the config string to a config object
 			if payload.Config != "" {
-				newConfig := routine.DeserializeConfig(payload.Config)
+				newConfig, err := routine.DeserializeConfig(payload.Config)
+				if err != nil {
+					log.Printf("Error: could not deserialize config for routine %s: %v", id, err)
+					continue
+				}
 				ctrl.Config.Store(newConfig)
 			} else {
 				// Use default config if none provided

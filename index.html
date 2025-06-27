@@ -22,6 +22,24 @@
             padding: 15px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
+        .success-message {
+            background-color: #dff0d8;
+            color: #3c763d;
+            border: 1px solid #d6e9c6;
+            border-radius: 4px;
+        }
+        .error-message {
+            background-color: #f2dede;
+            color: #a94442;
+            border: 1px solid #ebccd1;
+            border-radius: 4px;
+        }
+        .warning-message {
+            background-color: #fcf8e3;
+            color: #8a6d3b;
+            border: 1px solid #faebcc;
+            border-radius: 4px;
+        }
         .controls {
             gap: 10px;
             margin-bottom: 15px;
@@ -42,6 +60,53 @@
         }
         button.stop:hover {
             background-color: #d32f2f;
+        }
+        /* Android-style toggle switch */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 24px;
+            vertical-align: middle;
+            margin-left: 8px;
+        }
+        
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 24px;
+        }
+        
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        
+        input:checked + .slider {
+            background-color: #4CAF50;
+        }
+        
+        input:checked + .slider:before {
+            transform: translateX(26px);
         }
         table {
             width: 100%;
@@ -67,6 +132,7 @@
     <div class="container">
         <div class="card" id="controlPanelCard">
             <h2>Routine Manager</h2>
+            <div id="statusMessage" style="margin-bottom: 10px; padding: 8px; display: none;"></div>
             <div class="controls">
                 <div style="margin-bottom: 10px;">
                     <label>Count: </label>
@@ -90,6 +156,13 @@
                 <label>Filter by ID: </label>
                 <input type="text" id="idFilter" placeholder="Enter ID filter..." style="width: 200px;" oninput="applyFilter()">
                 <button onclick="clearFilter()">Clear</button>
+                <div style="float: right;">
+                    <label for="autoRefresh">Auto Refresh:</label>
+                    <label class="switch">
+                        <input type="checkbox" id="autoRefresh" checked onclick="toggleRefresh()">
+                        <span class="slider"></span>
+                    </label>
+                </div>
             </div>
             <table id="routinesTable">
                 <thead>
@@ -127,25 +200,92 @@
             checkTestMode();
         });
         
-        // Fetch and update the routines list every second
-        setInterval(updateRoutinesList, 1000);
+        // Variable to track if auto refresh is enabled
+        let autoRefreshEnabled = true;
+        let refreshInterval;
+        
+        // Function to start the refresh interval
+        function startRefreshInterval() {
+            refreshInterval = setInterval(updateRoutinesList, 1000);
+        }
+        
+        // Start the refresh interval when the page loads
+        startRefreshInterval();
+        
+        // Function to toggle auto refresh on/off
+        function toggleRefresh() {
+            const toggleSwitch = document.getElementById('autoRefresh');
+            autoRefreshEnabled = toggleSwitch.checked;
+            
+            if (autoRefreshEnabled) {
+                startRefreshInterval();
+            } else {
+                clearInterval(refreshInterval);
+            }
+        }
         
         function startRoutines() {
             const count = document.getElementById('count').value;
             const configStr = document.getElementById('initialConfig').value;
+            const statusMessage = document.getElementById('statusMessage');
             
-            // Validate JSON format
-            try {
-                JSON.parse(configStr); // Just to validate
-            } catch (e) {
-                alert('Invalid JSON format for config');
-                return;
-            }
+            // Clear previous status message
+            statusMessage.style.display = 'none';
+            statusMessage.textContent = '';
+            statusMessage.className = '';
             
             fetch(`/start?count=${count}&config=${encodeURIComponent(configStr)}`)
-                .then(response => response.text())
-                .then(data => console.log(data))
-                .catch(error => console.error('Error starting routines:', error));
+                .then(response => {
+                    // Check if the response is ok (status in the range 200-299)
+                    const isSuccess = response.ok;
+                    
+                    // Parse the JSON regardless of status code
+                    return response.json().then(data => {
+                        // Add the status information to the data
+                        return { ...data, httpSuccess: isSuccess };
+                    });
+                })
+                .then(data => {
+                    console.log(data);
+                    
+                    // Create a user-friendly message
+                    let message = '';
+                    if (data.success && data.httpSuccess) {
+                        message = `Successfully started ${data.started} routines`;
+                        showStatusMessage(message, 'success');
+                    } else {
+                        message = `Started ${data.started}/${data.total} routines`;
+                        if (data.error) {
+                            message += `. Error: ${data.error}`;
+                        }
+                        // Use error styling if HTTP status is 500
+                        const messageType = data.httpSuccess ? 'warning' : 'error';
+                        showStatusMessage(message, messageType);
+                    }
+                    
+                    // Update the routines list immediately
+                    updateRoutinesList();
+                })
+                .catch(error => {
+                    console.error('Error starting routines:', error);
+                    showStatusMessage('Error starting routines: ' + error.message, 'error');
+                });
+        }
+        
+        function showStatusMessage(message, type) {
+            const statusMessage = document.getElementById('statusMessage');
+            statusMessage.textContent = message;
+            statusMessage.style.display = 'block';
+            
+            // Apply appropriate styling based on message type
+            statusMessage.className = type + '-message';
+            
+            // Auto-hide success messages after 5 seconds
+            if (type === 'success') {
+                setTimeout(() => {
+                    statusMessage.style.display = 'none';
+                }, 5000);
+            }
         }
         
         function stopSelectedRoutines() {
@@ -175,14 +315,6 @@
             }
             
             const configValue = document.getElementById('configValue').value;
-            
-            // Validate JSON format
-            try {
-                JSON.parse(configValue); // Just to validate
-            } catch (e) {
-                alert('Invalid JSON format for config');
-                return;
-            }
             
             fetch('/update-config', {
                 method: 'POST',

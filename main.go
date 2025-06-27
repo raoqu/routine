@@ -30,7 +30,7 @@ func main() {
 
 	// Create a local scheduler instance with a routine instance
 	routine := NewCustomizedRoutine()
-	scheduler := NewRoutineScheduler[CustomizedConfig, CustomizedOutput](port, routine)
+	scheduler := NewRoutineScheduler[*CustomizedConfig, CustomizedOutput](port, routine)
 
 	// Start some test routines if in test mode
 	if IsTestMode {
