@@ -63,8 +63,8 @@ func (s *RoutineScheduler[TConfig, TOutput]) UpdateRoutineConfig(ids []string, n
 // The routine parameter should be a pointer to a Routine instance
 func NewRoutineScheduler[TConfig, TOutput any](port int, routine *Routine[TConfig, TOutput], interactiveMode bool) *RoutineScheduler[TConfig, TOutput] {
 	return &RoutineScheduler[TConfig, TOutput]{
-		Port:           port,
-		Routine:        routine,
+		Port:            port,
+		Routine:         routine,
 		InteractiveMode: interactiveMode,
 	}
 }
@@ -75,9 +75,10 @@ var (
 )
 
 // startRoutineWithConfig creates and starts a new routine with the given ID and config
-func (s *RoutineScheduler[TConfig, TOutput]) StartRoutineWithConfig(id string, config TConfig) {
+func (s *RoutineScheduler[TConfig, TOutput]) StartRoutineWithConfig(config TConfig) (string, error) {
 	// Use the routine instance from the scheduler
 	routine := s.Routine
+	id := routine.GenIdentity(config)
 
 	// Initialize the control with the config and default output
 	ctrl := NewRoutineControl(config, *new(TOutput)) // Zero value for TOutput
@@ -112,6 +113,7 @@ func (s *RoutineScheduler[TConfig, TOutput]) StartRoutineWithConfig(id string, c
 			}
 		}
 	}()
+	return id, nil
 }
 
 // stopRoutine stops a running routine with the given ID

@@ -24,7 +24,7 @@ func main() {
 
 	// Create a local scheduler instance with a routine instance
 	routine := NewCustomizedRoutine()
-	scheduler := NewRoutineScheduler[*CustomizedConfig, CustomizedOutput](port, routine, *interactiveFlag)
+	scheduler := NewRoutineScheduler[*CustomizedConfig, *CustomizedOutput](port, routine, *interactiveFlag)
 
 	// Start some test routines if in non-interactive mode
 	if !scheduler.InteractiveMode {

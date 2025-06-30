@@ -440,27 +440,8 @@
                         const row = document.createElement('tr');
                         
                         // Parse the JSON strings for output and config
-                        let outputDisplay = routine.OutputStr || routine.output;
-                        let configDisplay = routine.ConfigStr || routine.config;
-                        
-                        try {
-                            // Try to parse and display in a more readable format
-                            const outputObj = JSON.parse(routine.output);
-                            if (outputObj.count !== undefined) {
-                                outputDisplay = `Count: ${outputObj.count}`;
-                                if (outputObj.timestamp) {
-                                    outputDisplay += `<br>Time: ${new Date(outputObj.timestamp).toLocaleTimeString()}`;
-                                }
-                            }
-                            
-                            const configObj = JSON.parse(routine.config);
-                            if (configObj.value !== undefined) {
-                                configDisplay = `Value: ${configObj.value}`;
-                            }
-                        } catch (e) {
-                            // If parsing fails, use the raw string
-                            console.log('Error parsing JSON:', e);
-                        }
+                        let outputDisplay = routine.output ? routine.output.replace("\n", "<br/>") : "-";
+                        let configDisplay = routine.config ? routine.config.replace("\n", "<br/>") : "-";
                         
                         // Check if this routine was previously selected
                         const isChecked = selectedRoutineIds.includes(routine.id) ? 'checked' : '';

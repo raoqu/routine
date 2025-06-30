@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 )
 
 func (s *RoutineScheduler[TConfig, TOutput]) Serve() {
@@ -93,8 +92,6 @@ func (s *RoutineScheduler[TConfig, TOutput]) handleStart(w http.ResponseWriter, 
 	}
 
 	for i := 0; i < count; i++ {
-		id := fmt.Sprintf("worker-%d", time.Now().UnixNano())
-
 		// Use a function to properly scope the recovery for each iteration
 		func() {
 			defer func() {
@@ -109,8 +106,13 @@ func (s *RoutineScheduler[TConfig, TOutput]) handleStart(w http.ResponseWriter, 
 				result.SetError(fmt.Errorf("failed to deserialize config: %v", err))
 				return
 			}
-			s.StartRoutineWithConfig(id, config)
-			started++
+			id, err := s.StartRoutineWithConfig(config)
+			if err != nil {
+				result.SetError(fmt.Errorf("failed to start routine: %v", err))
+				return
+			} else if id != "" {
+				started++
+			}
 		}()
 	}
 
@@ -143,6 +145,7 @@ func (s *RoutineScheduler[TConfig, TOutput]) handleUpdateConfig(w http.ResponseW
 
 	var payload UpdateConfigPayload
 	var result *HandleResult = NewHandleResult(0, "Failed to update all requested routines")
+	result.Set(0, len(payload.IDs))
 
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		result.SetError(fmt.Errorf("invalid request format: %v", err)).Response(w)
@@ -191,18 +194,6 @@ func (s *RoutineScheduler[TConfig, TOutput]) handleStatus(w http.ResponseWriter,
 
 		// Use type switch to handle different routine control types
 		switch ctrl := val.(type) {
-		case interface {
-			GetRoutineType() string
-			GetSerializedConfig() string
-			GetSerializedOutput() string
-		}:
-			// Use the interface methods to get serialized data
-			routines = append(routines, RoutineInfo{
-				ID:        id,
-				OutputStr: ctrl.GetSerializedOutput(),
-				ConfigStr: ctrl.GetSerializedConfig(),
-			})
-
 		case *RoutineControl[TConfig, TOutput]:
 			// Use the routine instance from the scheduler
 			routine := s.Routine

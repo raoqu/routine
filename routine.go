@@ -32,7 +32,6 @@ func NewRoutineControl[TConfig any, TOutput any](config TConfig, initOutput TOut
 // Generic function types for a Routine
 type RoutineJob[TConfig any, TOutput any] func(ctrl *RoutineControl[TConfig, TOutput]) (TOutput, error)
 type RoutineIdentity[TConfig any] func(config TConfig) string
-type RoutineStatus func() string
 
 // Serialization/deserialization function types
 type ConfigSerializer[TConfig any] func(config TConfig) string
@@ -45,7 +44,6 @@ type OutputSerializer[TOutput any] func(output TOutput) string
 type Routine[TConfig any, TOutput any] struct {
 	Job         RoutineJob[TConfig, TOutput]
 	GenIdentity RoutineIdentity[TConfig]
-	GetStatus   RoutineStatus
 	// Serialization/deserialization functions
 	SerializeConfig   ConfigSerializer[TConfig]
 	DeserializeConfig ConfigDeserializer[TConfig]
