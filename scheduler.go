@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"sync"
 )
@@ -14,6 +15,28 @@ type RoutineScheduler[TConfig, TOutput any] struct {
 	Port int
 	// Routine is the stateless routine definition to use for all instances
 	Routine *Routine[TConfig, TOutput]
+}
+
+func (s *RoutineScheduler[TConfig, TOutput]) UpdateRoutineConfig(ids []string, newConfig TConfig) (int, error) {
+	var err error
+	updated := 0
+	for _, id := range ids {
+		if val, ok := routineMap.Load(id); ok {
+			// Type assertion to get the control object
+			ctrl, ok := val.(*RoutineControl[TConfig, TOutput])
+
+			if !ok {
+				err = fmt.Errorf("could not convert routine %s to expected type", id)
+				continue
+			} else {
+				ctrl.Config.Store(newConfig)
+				updated++
+			}
+		} else {
+			err = fmt.Errorf("routine %s not found", id)
+		}
+	}
+	return updated, err
 }
 
 // NewRoutineScheduler creates a new scheduler with the specified port and routine

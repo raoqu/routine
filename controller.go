@@ -10,6 +10,26 @@ import (
 	"time"
 )
 
+func (s *RoutineScheduler[TConfig, TOutput]) Serve() {
+	// Create a new ServeMux for this scheduler instance
+	mux := http.NewServeMux()
+
+	// Register handlers for this scheduler instance
+	mux.HandleFunc("/", s.handleHome)
+	mux.HandleFunc("/start", s.handleStart)
+	mux.HandleFunc("/stop", s.handleStop)
+	mux.HandleFunc("/update-config", s.handleUpdateConfig)
+	mux.HandleFunc("/status", s.handleStatus)
+	mux.HandleFunc("/test_mode", s.handleTestMode)
+	mux.HandleFunc("/switch", s.handleSwitchTestMode)
+
+	log.Printf("Routine server starting on port %d...", s.Port)
+	err := http.ListenAndServe(":"+strconv.Itoa(s.Port), mux)
+	if err != nil {
+		log.Fatalf("Server failed to start: %v", err)
+	}
+}
+
 // Handler to check if the application is in test mode
 func (s *RoutineScheduler[TConfig, TOutput]) handleTestMode(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -38,7 +58,7 @@ func (s *RoutineScheduler[TConfig, TOutput]) handleSwitchTestMode(w http.Respons
 func (s *RoutineScheduler[TConfig, TOutput]) handleHome(w http.ResponseWriter, r *http.Request) {
 	// Always serve the index.html file directly
 	// The JavaScript in the HTML will check for the isTestMode flag
-	http.ServeFile(w, r, "index.html")
+	http.ServeFile(w, r, "static/index.html")
 }
 
 // handleStart starts new routines based on request parameters
@@ -134,39 +154,20 @@ func (s *RoutineScheduler[TConfig, TOutput]) handleUpdateConfig(w http.ResponseW
 		return
 	}
 
-	// Track success and errors
-	updated := 0
-
-	// Use the routine instance from the scheduler
 	routine := s.Routine
 
-	for _, id := range payload.IDs {
-		if val, ok := routineMap.Load(id); ok {
-			// Type assertion to get the control object
-			ctrl, ok := val.(*RoutineControl[TConfig, TOutput])
-			if !ok {
-				log.Printf("Error: could not convert routine %s to expected type", id)
-				result.SetError(fmt.Sprintf("Could not convert routine %s to expected type", id))
-				continue
-			}
+	newConfig, err := routine.DeserializeConfig(payload.Config)
+	if err != nil {
+		log.Printf("Error: could not deserialize config %v", err)
+		result.SetError(fmt.Sprintf("Could not deserialize config %v", err)).Response(w)
+		return
+	}
 
-			// Deserialize the config string to a config object
-			if payload.Config != "" {
-				newConfig, err := routine.DeserializeConfig(payload.Config)
-				if err != nil {
-					log.Printf("Error: could not deserialize config for routine %s: %v", id, err)
-					result.SetError(fmt.Sprintf("Could not deserialize config for routine %s: %v", id, err))
-					continue
-				}
-				ctrl.Config.Store(newConfig)
-				updated++
-			} else {
-				// No config provided
-				result.SetError("No config provided")
-			}
-		} else {
-			result.SetError(fmt.Sprintf("Routine %s not found", id))
-		}
+	updated, err := s.UpdateRoutineConfig(payload.IDs, newConfig)
+	if err != nil {
+		log.Printf("Error: could not update config %v", err)
+		result.SetError(fmt.Sprintf("Could not update config %v", err)).Response(w)
+		return
 	}
 
 	result.Set(updated, len(payload.IDs)).Response(w)
@@ -223,26 +224,6 @@ func (s *RoutineScheduler[TConfig, TOutput]) handleStatus(w http.ResponseWriter,
 	})
 
 	_ = json.NewEncoder(w).Encode(routines)
-}
-
-func (s *RoutineScheduler[TConfig, TOutput]) Serve() {
-	// Create a new ServeMux for this scheduler instance
-	mux := http.NewServeMux()
-
-	// Register handlers for this scheduler instance
-	mux.HandleFunc("/", s.handleHome)
-	mux.HandleFunc("/start", s.handleStart)
-	mux.HandleFunc("/stop", s.handleStop)
-	mux.HandleFunc("/update-config", s.handleUpdateConfig)
-	mux.HandleFunc("/status", s.handleStatus)
-	mux.HandleFunc("/test_mode", s.handleTestMode)
-	mux.HandleFunc("/switch", s.handleSwitchTestMode)
-
-	log.Printf("Routine server starting on port %d...", s.Port)
-	err := http.ListenAndServe(":"+strconv.Itoa(s.Port), mux)
-	if err != nil {
-		log.Fatalf("Server failed to start: %v", err)
-	}
 }
 
 type HandleResult struct {
