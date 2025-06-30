@@ -17,6 +17,24 @@ type RoutineScheduler[TConfig, TOutput any] struct {
 	Routine *Routine[TConfig, TOutput]
 }
 
+func (s *RoutineScheduler[TConfig, TOutput]) StopRoutines(ids []string) (int, error) {
+	stopped := 0
+	var err error
+	for _, id := range ids {
+		if _, ok := routineMap.Load(id); ok {
+			errStop := s.StopRoutine(id)
+			if errStop != nil {
+				err = errStop
+				continue
+			}
+			stopped++
+		} else {
+			err = fmt.Errorf("routine %s not found", id)
+		}
+	}
+	return stopped, err
+}
+
 func (s *RoutineScheduler[TConfig, TOutput]) UpdateRoutineConfig(ids []string, newConfig TConfig) (int, error) {
 	var err error
 	updated := 0
@@ -54,7 +72,7 @@ var (
 )
 
 // startRoutineWithConfig creates and starts a new routine with the given ID and config
-func (s *RoutineScheduler[TConfig, TOutput]) startRoutineWithConfig(id string, config TConfig) {
+func (s *RoutineScheduler[TConfig, TOutput]) StartRoutineWithConfig(id string, config TConfig) {
 	// Use the routine instance from the scheduler
 	routine := s.Routine
 
@@ -72,6 +90,9 @@ func (s *RoutineScheduler[TConfig, TOutput]) startRoutineWithConfig(id string, c
 
 	go func() {
 		defer close(done)
+		// Make sure to remove the routine from the map when the goroutine exits
+		defer routineMap.Delete(id)
+
 		for {
 			select {
 			case <-ctx.Done():
@@ -91,20 +112,15 @@ func (s *RoutineScheduler[TConfig, TOutput]) startRoutineWithConfig(id string, c
 }
 
 // stopRoutine stops a running routine with the given ID
-func (s *RoutineScheduler[TConfig, TOutput]) stopRoutine(id string) {
+func (s *RoutineScheduler[TConfig, TOutput]) StopRoutine(id string) error {
 	if val, ok := routineMap.Load(id); ok {
 		// Type assertion to get the control object
 		ctrl, ok := val.(*RoutineControl[TConfig, TOutput])
 		if !ok {
-			log.Printf("Error: could not convert routine %s to expected type", id)
-			return
+			return fmt.Errorf("could not convert routine %s to expected type", id)
 		}
 
 		ctrl.Cancel()
-		go func() {
-			<-ctrl.Done
-			routineMap.Delete(id)
-			log.Printf("Routine %s fully stopped", id)
-		}()
 	}
+	return nil
 }

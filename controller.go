@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -74,20 +75,20 @@ func (s *RoutineScheduler[TConfig, TOutput]) handleStart(w http.ResponseWriter, 
 
 	// If count is 0 or negative, return an error
 	if count <= 0 {
-		result.SetError("Invalid count parameter: must be greater than 0").Response(w)
+		result.SetError(errors.New("invalid count parameter: must be greater than 0")).Response(w)
 		return
 	}
 
 	// If config is required but not provided, return an error
 	if configStr == "" {
-		result.SetError("Config parameter is required but was not provided").Response(w)
+		result.SetError(errors.New("config parameter is required but was not provided")).Response(w)
 		return
 	}
 
 	// Validate config before starting any routines
 	_, err := s.Routine.DeserializeConfig(configStr)
 	if err != nil {
-		result.SetError(fmt.Sprintf("Invalid config: %v", err)).Response(w)
+		result.SetError(fmt.Errorf("invalid config: %v", err)).Response(w)
 		return
 	}
 
@@ -98,17 +99,17 @@ func (s *RoutineScheduler[TConfig, TOutput]) handleStart(w http.ResponseWriter, 
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
-					result.SetError(fmt.Sprintf("Some routines failed to start: %v", r))
+					result.SetError(fmt.Errorf("some routines failed to start: %v", r))
 				}
 			}()
 
 			// Attempt to deserialize and use the config
 			config, err := s.Routine.DeserializeConfig(configStr)
 			if err != nil {
-				result.SetError(fmt.Sprintf("Failed to deserialize config: %v", err))
+				result.SetError(fmt.Errorf("failed to deserialize config: %v", err))
 				return
 			}
-			s.startRoutineWithConfig(id, config)
+			s.StartRoutineWithConfig(id, config)
 			started++
 		}()
 	}
@@ -121,21 +122,15 @@ func (s *RoutineScheduler[TConfig, TOutput]) handleStop(w http.ResponseWriter, r
 	var ids []string
 	var result *HandleResult = NewHandleResult(len(ids), "Failed to stop all requested routines")
 	if err := json.NewDecoder(r.Body).Decode(&ids); err != nil {
-		result.SetError(fmt.Sprintf("Invalid request format: %v", err)).Response(w)
+		result.SetError(fmt.Errorf("invalid request format: %v", err)).Response(w)
 		return
 	}
 
 	stopped := 0
 
-	for _, id := range ids {
-		if _, ok := routineMap.Load(id); ok {
-			s.stopRoutine(id)
-			stopped++
-		} else {
-			result.SetError(fmt.Sprintf("Routine %s not found", id)).Response(w)
-		}
-	}
+	stopped, err := s.StopRoutines(ids)
 
+	result.SetError(err)
 	result.Set(stopped, len(ids)).Response(w)
 }
 
@@ -150,7 +145,7 @@ func (s *RoutineScheduler[TConfig, TOutput]) handleUpdateConfig(w http.ResponseW
 	var result *HandleResult = NewHandleResult(0, "Failed to update all requested routines")
 
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		result.SetError(fmt.Sprintf("Invalid request format: %v", err)).Response(w)
+		result.SetError(fmt.Errorf("invalid request format: %v", err)).Response(w)
 		return
 	}
 
@@ -159,14 +154,14 @@ func (s *RoutineScheduler[TConfig, TOutput]) handleUpdateConfig(w http.ResponseW
 	newConfig, err := routine.DeserializeConfig(payload.Config)
 	if err != nil {
 		log.Printf("Error: could not deserialize config %v", err)
-		result.SetError(fmt.Sprintf("Could not deserialize config %v", err)).Response(w)
+		result.SetError(fmt.Errorf("could not deserialize config %v", err)).Response(w)
 		return
 	}
 
 	updated, err := s.UpdateRoutineConfig(payload.IDs, newConfig)
 	if err != nil {
 		log.Printf("Error: could not update config %v", err)
-		result.SetError(fmt.Sprintf("Could not update config %v", err)).Response(w)
+		result.SetError(fmt.Errorf("could not update config %v", err)).Response(w)
 		return
 	}
 
@@ -250,9 +245,14 @@ func (result *HandleResult) SetSuccess() *HandleResult {
 	return result
 }
 
-func (result *HandleResult) SetError(error string) *HandleResult {
-	result.Success = false
-	result.Error = error
+func (result *HandleResult) SetError(err error) *HandleResult {
+	if err != nil {
+		result.Success = false
+		result.Error = err.Error()
+	} else {
+		result.Success = true
+		result.Error = ""
+	}
 	return result
 }
 
