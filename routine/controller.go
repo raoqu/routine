@@ -60,7 +60,7 @@ func (s *RoutineScheduler[TConfig, TOutput]) handleSwitchInteractiveMode(w http.
 func (s *RoutineScheduler[TConfig, TOutput]) handleHome(w http.ResponseWriter, r *http.Request) {
 	// Always serve the index.html file directly
 	// The JavaScript in the HTML will check for the isTestMode flag
-	http.ServeFile(w, r, "static/index.html")
+	http.ServeFile(w, r, "static/routines.html")
 }
 
 // handleStart starts new routines based on request parameters
