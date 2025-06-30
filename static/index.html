@@ -196,13 +196,13 @@
     <script>
         // Check if we're in test mode by calling the test_mode endpoint
         function checkTestMode() {
-            fetch('/test_mode')
+            fetch('/interactive_mode')
                 .then(response => response.json())
                 .then(data => {
                     const controlPanel = document.getElementById('controlPanelCard');
                     if (controlPanel) {
                         // Show or hide the control panel based on test mode
-                        controlPanel.style.display = data.testMode ? 'block' : 'none';
+                        controlPanel.style.display = data.interactiveMode ? 'block' : 'none';
                     }
                 })
                 .catch(error => console.error('Error checking test mode:', error));

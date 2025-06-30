@@ -15,6 +15,8 @@ type RoutineScheduler[TConfig, TOutput any] struct {
 	Port int
 	// Routine is the stateless routine definition to use for all instances
 	Routine *Routine[TConfig, TOutput]
+	// InteractiveMode indicates whether the application is running in interactive mode
+	InteractiveMode bool
 }
 
 func (s *RoutineScheduler[TConfig, TOutput]) StopRoutines(ids []string) (int, error) {
@@ -59,10 +61,11 @@ func (s *RoutineScheduler[TConfig, TOutput]) UpdateRoutineConfig(ids []string, n
 
 // NewRoutineScheduler creates a new scheduler with the specified port and routine
 // The routine parameter should be a pointer to a Routine instance
-func NewRoutineScheduler[TConfig, TOutput any](port int, routine *Routine[TConfig, TOutput]) *RoutineScheduler[TConfig, TOutput] {
+func NewRoutineScheduler[TConfig, TOutput any](port int, routine *Routine[TConfig, TOutput], interactiveMode bool) *RoutineScheduler[TConfig, TOutput] {
 	return &RoutineScheduler[TConfig, TOutput]{
-		Port:    port,
-		Routine: routine,
+		Port:           port,
+		Routine:        routine,
+		InteractiveMode: interactiveMode,
 	}
 }
 

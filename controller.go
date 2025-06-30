@@ -21,8 +21,8 @@ func (s *RoutineScheduler[TConfig, TOutput]) Serve() {
 	mux.HandleFunc("/stop", s.handleStop)
 	mux.HandleFunc("/update-config", s.handleUpdateConfig)
 	mux.HandleFunc("/status", s.handleStatus)
-	mux.HandleFunc("/test_mode", s.handleTestMode)
-	mux.HandleFunc("/switch", s.handleSwitchTestMode)
+	mux.HandleFunc("/interactive_mode", s.handleInteractiveMode)
+	mux.HandleFunc("/switch", s.handleSwitchInteractiveMode)
 
 	log.Printf("Routine server starting on port %d...", s.Port)
 	err := http.ListenAndServe(":"+strconv.Itoa(s.Port), mux)
@@ -31,28 +31,28 @@ func (s *RoutineScheduler[TConfig, TOutput]) Serve() {
 	}
 }
 
-// Handler to check if the application is in test mode
-func (s *RoutineScheduler[TConfig, TOutput]) handleTestMode(w http.ResponseWriter, r *http.Request) {
+// Handler to check if the application is in interactive mode
+func (s *RoutineScheduler[TConfig, TOutput]) handleInteractiveMode(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]bool{"testMode": IsTestMode})
+	json.NewEncoder(w).Encode(map[string]bool{"interactiveMode": s.InteractiveMode})
 }
 
-// Handler to switch test mode on or off
-func (s *RoutineScheduler[TConfig, TOutput]) handleSwitchTestMode(w http.ResponseWriter, r *http.Request) {
+// Handler to switch interactive mode on or off
+func (s *RoutineScheduler[TConfig, TOutput]) handleSwitchInteractiveMode(w http.ResponseWriter, r *http.Request) {
 	// Get the desired mode from the query parameter
 	mode := r.URL.Query().Get("mode")
 
 	if mode == "on" {
-		IsTestMode = true
-		log.Println("Switched to test mode")
+		s.InteractiveMode = true
+		log.Println("Switched to test mode (non-interactive)")
 	} else if mode == "off" {
-		IsTestMode = false
-		log.Println("Switched to normal mode")
+		s.InteractiveMode = false
+		log.Println("Switched to normal mode (interactive)")
 	}
 
 	// Return the current mode
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]bool{"testMode": IsTestMode})
+	json.NewEncoder(w).Encode(map[string]bool{"interactiveMode": s.InteractiveMode})
 }
 
 // handleHome serves the main HTML page
