@@ -3,12 +3,14 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"main/routine"
 	"time"
 )
 
 // CustomizedConfig holds the configuration for a CustomizedRoutine
 type CustomizedConfig struct {
-	Value int `json:"value"`
+	Value   int  `json:"value"`
+	Suspend bool `json:"suspend"`
 }
 
 // CustomizedOutput holds the output data for a CustomizedRoutine
@@ -19,12 +21,19 @@ type CustomizedOutput struct {
 
 // CustomizedRoutine implements the Routine interface with CustomizedConfig and CustomizedOutput types
 type CustomizedRoutine struct {
-	// We can add fields here if needed
 }
 
 // Job implements the routine job function for CustomizedRoutine
-func (r *CustomizedRoutine) Job(ctrl *RoutineControl[*CustomizedConfig, *CustomizedOutput]) (*CustomizedOutput, error) {
+func (r *CustomizedRoutine) Job(ctrl *routine.RoutineControl[*CustomizedConfig, *CustomizedOutput]) (*CustomizedOutput, error) {
+	// If routine is suspended, return current output without changes
 	config := ctrl.Config.Load().(*CustomizedConfig)
+	if config.Suspend {
+		if prevOutput, ok := ctrl.Output.Load().(*CustomizedOutput); ok {
+			return prevOutput, nil
+		}
+		// If no previous output, return empty output
+		return &CustomizedOutput{Timestamp: time.Now()}, nil
+	}
 
 	// Safely handle the previous output, which might be nil on first run
 	var prevCount int
@@ -75,16 +84,38 @@ func (r *CustomizedRoutine) SerializeOutput(output *CustomizedOutput) string {
 		output.Timestamp.Format(time.RFC3339))
 }
 
+// Suspend implements suspend for CustomizedRoutine
+func (r *CustomizedRoutine) Suspend(ctrl *routine.RoutineControl[*CustomizedConfig, *CustomizedOutput]) {
+	config := ctrl.Config.Load().(*CustomizedConfig)
+	newConfig := CustomizedConfig{
+		Value:   config.Value,
+		Suspend: true,
+	}
+	ctrl.Config.Store(&newConfig)
+}
+
+// Resume implements resume for CustomizedRoutine
+func (r *CustomizedRoutine) Resume(ctrl *routine.RoutineControl[*CustomizedConfig, *CustomizedOutput]) {
+	config := ctrl.Config.Load().(*CustomizedConfig)
+	newConfig := CustomizedConfig{
+		Value:   config.Value,
+		Suspend: false,
+	}
+	ctrl.Config.Store(&newConfig)
+}
+
 // NewCustomizedRoutine creates a new CustomizedRoutine instance
-func NewCustomizedRoutine() *Routine[*CustomizedConfig, *CustomizedOutput] {
+func NewCustomizedRoutine() *routine.Routine[*CustomizedConfig, *CustomizedOutput] {
 	customized := &CustomizedRoutine{}
 
 	// Convert the CustomizedRoutine to a Routine
-	return &Routine[*CustomizedConfig, *CustomizedOutput]{
+	return &routine.Routine[*CustomizedConfig, *CustomizedOutput]{
 		Job:               customized.Job,
 		GenIdentity:       customized.GenIdentity,
 		SerializeConfig:   customized.SerializeConfig,
 		DeserializeConfig: customized.DeserializeConfig,
 		SerializeOutput:   customized.SerializeOutput,
+		Suspend:           customized.Suspend,
+		Resume:            customized.Resume,
 	}
 }

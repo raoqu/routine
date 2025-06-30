@@ -1,4 +1,4 @@
-package main
+package routine
 
 import (
 	"context"
@@ -33,6 +33,9 @@ func NewRoutineControl[TConfig any, TOutput any](config TConfig, initOutput TOut
 type RoutineJob[TConfig any, TOutput any] func(ctrl *RoutineControl[TConfig, TOutput]) (TOutput, error)
 type RoutineIdentity[TConfig any] func(config TConfig) string
 
+type SuspendedRoutine[TConfig any, TOutput any] func(ctrl *RoutineControl[TConfig, TOutput])
+type ResumeRoutine[TConfig any, TOutput any] func(ctrl *RoutineControl[TConfig, TOutput])
+
 // Serialization/deserialization function types
 type ConfigSerializer[TConfig any] func(config TConfig) string
 type ConfigDeserializer[TConfig any] func(configStr string) (TConfig, error)
@@ -48,6 +51,8 @@ type Routine[TConfig any, TOutput any] struct {
 	SerializeConfig   ConfigSerializer[TConfig]
 	DeserializeConfig ConfigDeserializer[TConfig]
 	SerializeOutput   OutputSerializer[TOutput]
+	Suspend           SuspendedRoutine[TConfig, TOutput]
+	Resume            ResumeRoutine[TConfig, TOutput]
 }
 
 // RoutineCreateFunc is a generic function type for creating routines.

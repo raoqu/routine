@@ -1,4 +1,4 @@
-package main
+package routine
 
 import (
 	"encoding/json"
@@ -18,6 +18,8 @@ func (s *RoutineScheduler[TConfig, TOutput]) Serve() {
 	mux.HandleFunc("/", s.handleHome)
 	mux.HandleFunc("/start", s.handleStart)
 	mux.HandleFunc("/stop", s.handleStop)
+	mux.HandleFunc("/suspend", s.handleSuspend)
+	mux.HandleFunc("/resume", s.handleResume)
 	mux.HandleFunc("/update-config", s.handleUpdateConfig)
 	mux.HandleFunc("/status", s.handleStatus)
 	mux.HandleFunc("/interactive_mode", s.handleInteractiveMode)
@@ -134,6 +136,40 @@ func (s *RoutineScheduler[TConfig, TOutput]) handleStop(w http.ResponseWriter, r
 
 	result.SetError(err)
 	result.Set(stopped, len(ids)).Response(w)
+}
+
+// handleSuspend suspends routines based on request body
+func (s *RoutineScheduler[TConfig, TOutput]) handleSuspend(w http.ResponseWriter, r *http.Request) {
+	var ids []string
+	var result *HandleResult = NewHandleResult(len(ids), "Failed to suspend all requested routines")
+	if err := json.NewDecoder(r.Body).Decode(&ids); err != nil {
+		result.SetError(fmt.Errorf("invalid request format: %v", err)).Response(w)
+		return
+	}
+
+	suspended := 0
+
+	suspended, err := s.SuspendRoutines(ids)
+
+	result.SetError(err)
+	result.Set(suspended, len(ids)).Response(w)
+}
+
+// handleResume resumes routines based on request body
+func (s *RoutineScheduler[TConfig, TOutput]) handleResume(w http.ResponseWriter, r *http.Request) {
+	var ids []string
+	var result *HandleResult = NewHandleResult(len(ids), "Failed to resume all requested routines")
+	if err := json.NewDecoder(r.Body).Decode(&ids); err != nil {
+		result.SetError(fmt.Errorf("invalid request format: %v", err)).Response(w)
+		return
+	}
+
+	resumed := 0
+
+	resumed, err := s.ResumeRoutines(ids)
+
+	result.SetError(err)
+	result.Set(resumed, len(ids)).Response(w)
 }
 
 // handleUpdateConfig updates routine configs based on request body

@@ -1,5 +1,5 @@
 // Package routine provides tools for managing concurrent routines.
-package main
+package routine
 
 import (
 	"context"
@@ -128,4 +128,70 @@ func (s *RoutineScheduler[TConfig, TOutput]) StopRoutine(id string) error {
 		ctrl.Cancel()
 	}
 	return nil
+}
+
+// SuspendRoutine suspends a running routine with the given ID
+func (s *RoutineScheduler[TConfig, TOutput]) SuspendRoutine(id string) error {
+	if val, ok := routineMap.Load(id); ok {
+		// Type assertion to get the control object
+		ctrl, ok := val.(*RoutineControl[TConfig, TOutput])
+		if !ok {
+			return fmt.Errorf("could not convert routine %s to expected type", id)
+		}
+
+		// Call the routine's suspend function if available
+		if s.Routine.Suspend != nil {
+			s.Routine.Suspend(ctrl)
+		}
+		return nil
+	}
+	return fmt.Errorf("routine %s not found", id)
+}
+
+// ResumeRoutine resumes a suspended routine with the given ID
+func (s *RoutineScheduler[TConfig, TOutput]) ResumeRoutine(id string) error {
+	if val, ok := routineMap.Load(id); ok {
+		// Type assertion to get the control object
+		ctrl, ok := val.(*RoutineControl[TConfig, TOutput])
+		if !ok {
+			return fmt.Errorf("could not convert routine %s to expected type", id)
+		}
+
+		// Call the routine's resume function if available
+		if s.Routine.Resume != nil {
+			s.Routine.Resume(ctrl)
+		}
+		return nil
+	}
+	return fmt.Errorf("routine %s not found", id)
+}
+
+// SuspendRoutines suspends multiple routines with the given IDs
+func (s *RoutineScheduler[TConfig, TOutput]) SuspendRoutines(ids []string) (int, error) {
+	suspended := 0
+	var err error
+	for _, id := range ids {
+		errSuspend := s.SuspendRoutine(id)
+		if errSuspend != nil {
+			err = errSuspend
+			continue
+		}
+		suspended++
+	}
+	return suspended, err
+}
+
+// ResumeRoutines resumes multiple routines with the given IDs
+func (s *RoutineScheduler[TConfig, TOutput]) ResumeRoutines(ids []string) (int, error) {
+	resumed := 0
+	var err error
+	for _, id := range ids {
+		errResume := s.ResumeRoutine(id)
+		if errResume != nil {
+			err = errResume
+			continue
+		}
+		resumed++
+	}
+	return resumed, err
 }

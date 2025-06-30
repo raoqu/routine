@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Routine Manager</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -65,11 +66,98 @@
         button:hover {
             background-color: #45a049;
         }
-        button.stop {
+        .icon-button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            margin-right: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
+        }
+        
+        .icon-button i {
+            font-size: 18px;
+        }
+        
+        .icon-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+        
+        .icon-button.stop {
             background-color: #f44336;
         }
-        button.stop:hover {
+        .icon-button.stop:hover {
             background-color: #d32f2f;
+        }
+        
+        .icon-button.suspend {
+            background-color: #ff9800;
+        }
+        .icon-button.suspend:hover {
+            background-color: #f57c00;
+        }
+        
+        .icon-button.resume {
+            background-color: #2196F3;
+        }
+        .icon-button.resume:hover {
+            background-color: #1976D2;
+        }
+        
+        .icon-button.start {
+            background-color: #4CAF50;
+        }
+        .icon-button.start:hover {
+            background-color: #45a049;
+        }
+        
+        .icon-button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+            box-shadow: none;
+            transform: none;
+            opacity: 0.6;
+        }
+        
+        .icon-button:disabled:hover {
+            box-shadow: none;
+            transform: none;
+        }
+        
+        .button-group {
+            display: flex;
+            margin-bottom: 15px;
+        }
+        
+        .tooltip {
+            position: relative;
+            display: inline-block;
+        }
+        
+        .tooltip .tooltiptext {
+            visibility: hidden;
+            width: 120px;
+            background-color: #555;
+            color: #fff;
+            text-align: center;
+            border-radius: 6px;
+            padding: 5px;
+            position: absolute;
+            z-index: 1;
+            bottom: 125%;
+            left: 50%;
+            margin-left: -60px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        
+        .tooltip:hover .tooltiptext {
+            visibility: visible;
+            opacity: 1;
         }
         /* Android-style toggle switch */
         .switch {
@@ -152,10 +240,24 @@
                     <input type="number" id="count" value="1" min="1" max="100">
                     <label>Initial Config: </label>
                     <input type="text" id="initialConfig" value='{"value":1}' style="width: 150px;">
-                    <button onclick="startRoutines()">Start Routines</button>
+                    <div class="tooltip" style="vertical-align: middle;">
+                        <button class="icon-button start" onclick="startRoutines()"><i class="fas fa-play-circle"></i></button>
+                        <span class="tooltiptext">Start Routines</span>
+                    </div>
+                    <div class="tooltip">
+                        <button id="stopButton" class="icon-button stop" onclick="stopSelectedRoutines()" disabled><i class="fas fa-stop"></i></button>
+                        <span class="tooltiptext">Stop Selected</span>
+                    </div>
+                    <div class="tooltip">
+                        <button id="suspendButton" class="icon-button suspend" onclick="suspendSelectedRoutines()" disabled><i class="fas fa-pause"></i></button>
+                        <span class="tooltiptext">Suspend Selected</span>
+                    </div>
+                    <div class="tooltip">
+                        <button id="resumeButton" class="icon-button resume" onclick="resumeSelectedRoutines()" disabled><i class="fas fa-play"></i></button>
+                        <span class="tooltiptext">Resume Selected</span>
+                    </div>
                 </div>
                 <div>
-                    <button class="stop" onclick="stopSelectedRoutines()">Stop Selected</button><br/>
                     <label>New Config: </label>
                     <input type="text" id="configValue" value='{"value":2}' style="width: 150px;">
                     <button onclick="updateConfig()">Update Config</button>
@@ -224,6 +326,9 @@
         
         // Start the refresh interval when the page loads
         startRefreshInterval();
+        
+        // Initialize action buttons state
+        updateActionButtonsState(false);
         
         // Function to toggle auto refresh on/off
         function toggleRefresh() {
@@ -405,6 +510,96 @@
             });
         }
         
+        function suspendSelectedRoutines() {
+            const selectedIds = getSelectedRoutineIds();
+            if (selectedIds.length === 0) {
+                showStatusMessage('No routines selected', 'error');
+                return;
+            }
+            
+            fetch('/suspend', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(selectedIds)
+            })
+            .then(response => {
+                const isSuccess = response.ok;
+                return response.json().then(data => {
+                    return { ...data, httpSuccess: isSuccess };
+                });
+            })
+            .then(data => {
+                console.log(data);
+                
+                let message = '';
+                if (data.success && data.httpSuccess) {
+                    message = `Successfully suspended ${data.success_count} routines`;
+                    showStatusMessage(message, 'success');
+                } else {
+                    message = `Suspended ${data.success_count}/${data.total_count} routines`;
+                    if (data.error) {
+                        message += `. Error: ${data.error}`;
+                    }
+                    const messageType = data.httpSuccess ? 'warning' : 'error';
+                    showStatusMessage(message, messageType);
+                }
+                
+                // Update the routines list immediately
+                updateRoutinesList();
+            })
+            .catch(error => {
+                console.error('Error suspending routines:', error);
+                showStatusMessage('Error suspending routines: ' + error.message, 'error');
+            });
+        }
+        
+        function resumeSelectedRoutines() {
+            const selectedIds = getSelectedRoutineIds();
+            if (selectedIds.length === 0) {
+                showStatusMessage('No routines selected', 'error');
+                return;
+            }
+            
+            fetch('/resume', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(selectedIds)
+            })
+            .then(response => {
+                const isSuccess = response.ok;
+                return response.json().then(data => {
+                    return { ...data, httpSuccess: isSuccess };
+                });
+            })
+            .then(data => {
+                console.log(data);
+                
+                let message = '';
+                if (data.success && data.httpSuccess) {
+                    message = `Successfully resumed ${data.success_count} routines`;
+                    showStatusMessage(message, 'success');
+                } else {
+                    message = `Resumed ${data.success_count}/${data.total_count} routines`;
+                    if (data.error) {
+                        message += `. Error: ${data.error}`;
+                    }
+                    const messageType = data.httpSuccess ? 'warning' : 'error';
+                    showStatusMessage(message, messageType);
+                }
+                
+                // Update the routines list immediately
+                updateRoutinesList();
+            })
+            .catch(error => {
+                console.error('Error resuming routines:', error);
+                showStatusMessage('Error resuming routines: ' + error.message, 'error');
+            });
+        }
+        
         // Store selected routine IDs between updates
         let selectedRoutineIds = [];
         let currentFilter = "";
@@ -440,14 +635,14 @@
                         const row = document.createElement('tr');
                         
                         // Parse the JSON strings for output and config
-                        let outputDisplay = routine.output ? routine.output.replace("\n", "<br/>") : "-";
-                        let configDisplay = routine.config ? routine.config.replace("\n", "<br/>") : "-";
+                        let outputDisplay = routine.output ? routine.output.replace(/\n/g, "<br/>") : "-";
+                        let configDisplay = routine.config ? routine.config.replace(/\n/g, "<br/>") : "-";
                         
                         // Check if this routine was previously selected
                         const isChecked = selectedRoutineIds.includes(routine.id) ? 'checked' : '';
                         
                         row.innerHTML = `
-                            <td><input type="checkbox" class="routine-checkbox" data-id="${routine.id}" ${isChecked}></td>
+                            <td><input type="checkbox" class="routine-checkbox" value="${routine.id}" ${isChecked}></td>
                             <td>${routine.id}</td>
                             <td>${outputDisplay}</td>
                             <td>${configDisplay}</td>
@@ -455,23 +650,46 @@
                         routinesList.appendChild(row);
                     });
                     
+                    // Add event listeners to all checkboxes
+                    document.querySelectorAll('.routine-checkbox').forEach(checkbox => {
+                        checkbox.addEventListener('change', function() {
+                            // Update action buttons state whenever a checkbox changes
+                            updateActionButtonsState(document.querySelectorAll('.routine-checkbox:checked').length > 0);
+                            // Update select all checkbox state
+                            updateSelectAllCheckbox();
+                        });
+                    });
+                    
                     // Update the select all checkbox state
                     updateSelectAllCheckbox();
+                    // Update action buttons state based on current selection
+                    updateActionButtonsState(document.querySelectorAll('.routine-checkbox:checked').length > 0);
                 })
                 .catch(error => console.error('Error fetching routines:', error));
         }
         
         function getSelectedRoutineIds() {
             const checkboxes = document.querySelectorAll('.routine-checkbox:checked');
-            return Array.from(checkboxes).map(checkbox => checkbox.dataset.id);
+            const ids = Array.from(checkboxes).map(checkbox => checkbox.value);
+            return ids;
+        }
+        
+        function updateActionButtonsState(hasSelection) {
+            document.getElementById('stopButton').disabled = !hasSelection;
+            document.getElementById('suspendButton').disabled = !hasSelection;
+            document.getElementById('resumeButton').disabled = !hasSelection;
         }
         
         function toggleSelectAll() {
-            const selectAll = document.getElementById('selectAll');
+            const selectAllCheckbox = document.getElementById('selectAll');
             const checkboxes = document.querySelectorAll('.routine-checkbox');
+            
             checkboxes.forEach(checkbox => {
-                checkbox.checked = selectAll.checked;
+                checkbox.checked = selectAllCheckbox.checked;
             });
+            
+            // Update action buttons state based on selection
+            updateActionButtonsState(selectAllCheckbox.checked && checkboxes.length > 0);
         }
         
         function updateSelectAllCheckbox() {
@@ -482,6 +700,7 @@
             // If no checkboxes, uncheck the select all
             if (checkboxArray.length === 0) {
                 selectAll.checked = false;
+                updateActionButtonsState(false);
                 return;
             }
             

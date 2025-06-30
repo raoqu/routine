@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"log"
+	"main/routine"
 )
 
 // No global flags - all state is now maintained in the RoutineScheduler instance
@@ -23,8 +24,8 @@ func main() {
 	log.Printf("Using port: %d", port)
 
 	// Create a local scheduler instance with a routine instance
-	routine := NewCustomizedRoutine()
-	scheduler := NewRoutineScheduler[*CustomizedConfig, *CustomizedOutput](port, routine, *interactiveFlag)
+	routineInstance := NewCustomizedRoutine()
+	scheduler := routine.NewRoutineScheduler[*CustomizedConfig, *CustomizedOutput](port, routineInstance, *interactiveFlag)
 
 	// Start some test routines if in non-interactive mode
 	if !scheduler.InteractiveMode {
